@@ -1,0 +1,26 @@
+:root {
+  --bg-canvas: #F8FAFC;
+  --bg-surface: #FFFFFF;
+  --bg-subtle: #F1F5F9;
+  --text-primary: #172033;
+  --text-secondary: #5B6475;
+  --text-muted: #8993A4;
+  --border-default: #E2E8F0;
+  --brand-primary: #0F766E;
+  --brand-primary-hover: #115E59;
+  --brand-primary-soft: #CCFBF1;
+  --on-brand: #FFFFFF;
+  --success: #15803D;
+  --warning: #B45309;
+  --danger: #B91C1C;
+  --info: #0369A1;
+  --radius-md: 12px;
+  --shadow-card: 0 1px 2px rgba(15, 23, 42, 0.05);
+}
+[data-theme="navy-commerce"] { --brand-primary: #1E3A8A; --brand-primary-hover: #1E40AF; --brand-primary-soft: #DBEAFE; }
+[data-theme="forest-margin"] { --brand-primary: #166534; --brand-primary-hover: #14532D; --brand-primary-soft: #DCFCE7; }
+body { background: var(--bg-canvas); color: var(--text-primary); font-family: Inter, Manrope, system-ui, sans-serif; }
+.button-primary { color: var(--on-brand); background: var(--brand-primary); border-radius: var(--radius-md); padding: 12px 20px; min-height: 44px; }
+.card { background: var(--bg-surface); border: 1px solid var(--border-default); border-radius: var(--radius-md); box-shadow: var(--shadow-card); }
+.hero { max-height: 720px; background: linear-gradient(90deg, rgba(8,30,34,.88), rgba(8,30,34,.30)), url("/images/hero-store-owner.webp") center/cover no-repeat; background-color: #0b1e22; }
+.hero + * { background: var(--bg-canvas); }

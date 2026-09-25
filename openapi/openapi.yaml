@@ -1,0 +1,1013 @@
+openapi: 3.0.3
+info:
+  title: Pricing Intelligence API
+  version: 2.0.0
+  description: Phase 2 foundation and WooCommerce catalog synchronization. No pricing automation endpoints are exposed.
+servers:
+  - url: http://localhost:8080/api/v1
+security:
+  - sessionCookie: []
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: fintrade_session
+  parameters:
+    Slug:
+      in: path
+      name: slug
+      required: true
+      schema: { type: string, pattern: '^[a-z0-9]+(-[a-z0-9]+)*$' }
+    RunId:
+      in: path
+      name: id
+      required: true
+      schema: { type: string, format: uuid }
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: object
+          required: [code, message, request_id]
+          properties:
+            code: { type: string }
+            message: { type: string }
+            request_id: { type: string }
+    Organization:
+      type: object
+      required: [id, name, slug]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        slug: { type: string, pattern: '^[a-z0-9]+(-[a-z0-9]+)*$' }
+    Connection:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        store_id: { type: string, format: uuid }
+        store_name: { type: string }
+        store_url: { type: string, format: uri }
+        api_version: { type: string, example: v3 }
+        status: { type: string, enum: [connected, revoked, error, disconnected] }
+        webhook_status: { type: string, enum: [active, disabled, pending, error, unknown] }
+        last_sync_at: { type: string, format: date-time, nullable: true }
+        last_error: { type: string }
+        rate_limited_until: { type: string, format: date-time, nullable: true }
+    SyncRun:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        store_id: { type: string, format: uuid }
+        kind: { type: string, enum: [initial, webhook, reconcile, retry] }
+        status: { type: string, enum: [queued, running, succeeded, partial, failed] }
+        imported_products: { type: integer }
+        imported_variants: { type: integer }
+        failed_items: { type: integer }
+        attempts: { type: integer }
+        error_summary: { type: string }
+        created_at: { type: string, format: date-time }
+        started_at: { type: string, format: date-time, nullable: true }
+        finished_at: { type: string, format: date-time, nullable: true }
+    CostComponents:
+      type: object
+      required: [supplier_cost_kobo, shipping_cost_kobo, packaging_cost_kobo, payment_fee_kobo, tax_import_cost_kobo, other_allocated_cost_kobo]
+      properties:
+        supplier_cost_kobo: { type: integer, format: int64, minimum: 0 }
+        shipping_cost_kobo: { type: integer, format: int64, minimum: 0 }
+        packaging_cost_kobo: { type: integer, format: int64, minimum: 0 }
+        payment_fee_kobo: { type: integer, format: int64, minimum: 0 }
+        tax_import_cost_kobo: { type: integer, format: int64, minimum: 0 }
+        other_allocated_cost_kobo: { type: integer, format: int64, minimum: 0 }
+    PricingResult:
+      type: object
+      properties:
+        status: { type: string, enum: [compliant, below_floor, guardrail_blocked, locked] }
+        reason: { type: string }
+        product_id: { type: string, format: uuid }
+        landed_cost_kobo: { type: integer, format: int64 }
+        current_price_kobo: { type: integer, format: int64 }
+        current_margin_bps: { type: integer }
+        minimum_margin_bps: { type: integer }
+        minimum_profitable_price_kobo: { type: integer, format: int64 }
+        gross_profit_kobo: { type: integer, format: int64 }
+        price_change_required_bps: { type: integer }
+        guardrail_maximum_change_bps: { type: integer }
+        product_locked: { type: boolean }
+    PricingRule:
+      type: object
+      required: [name, scope_type, minimum_margin_bps, maximum_change_bps, rounding_increment_kobo, priority, active, cooldown_minutes]
+      properties:
+        id: { type: string, format: uuid, readOnly: true }
+        version: { type: integer, readOnly: true }
+        name: { type: string, minLength: 3, maxLength: 100 }
+        scope_type: { type: string, enum: [product, variant, category, store] }
+        product_id: { type: string, format: uuid }
+        variant_id: { type: string, format: uuid }
+        category_id: { type: string, format: uuid }
+        minimum_margin_bps: { type: integer, minimum: 1, maximum: 9999 }
+        maximum_change_bps: { type: integer, minimum: 1, maximum: 10000 }
+        maximum_price_kobo: { type: integer, format: int64, minimum: 0 }
+        rounding_increment_kobo: { type: integer, minimum: 1 }
+        priority: { type: integer, minimum: 1 }
+        active: { type: boolean }
+        cooldown_minutes: { type: integer, minimum: 0 }
+        conditions:
+          type: object
+          properties:
+            minimum_stock: { type: integer, minimum: 0 }
+            maximum_current_price_kobo: { type: integer, format: int64, minimum: 0 }
+            in_stock_only: { type: boolean }
+    Report:
+      type: object
+      properties:
+        kind: { type: string }
+        columns: { type: array, items: { type: string } }
+        rows: { type: array, items: { type: array, items: { type: string } } }
+        row_count: { type: integer }
+        generated_at: { type: string, format: date-time }
+    Notification:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        type: { type: string }
+        title: { type: string }
+        body: { type: string }
+        read: { type: boolean }
+        read_at: { type: string, format: date-time }
+        created_at: { type: string, format: date-time }
+        deliveries:
+          type: array
+          items:
+            type: object
+            properties:
+              channel: { type: string, enum: [inapp, email, whatsapp, push] }
+              status: { type: string, enum: [queued, sent, failed] }
+              attempts: { type: integer }
+              last_error: { type: string }
+    NotificationPreference:
+      type: object
+      required: [alert_type]
+      properties:
+        alert_type: { type: string }
+        inapp_enabled: { type: boolean }
+        email_enabled: { type: boolean }
+        whatsapp_enabled: { type: boolean }
+        critical_override: { type: boolean, description: Required with a reason to mute a critical alert }
+        critical_override_reason: { type: string, minLength: 10 }
+    AnnouncementInput:
+      type: object
+      required: [title, body_text]
+      properties:
+        title: { type: string, maxLength: 200 }
+        body_text: { type: string, maxLength: 20000 }
+        body_html: { type: string, description: Sanitized to a small formatting allowlist }
+        severity: { type: string, enum: [info, critical] }
+        status: { type: string, enum: [draft, scheduled, published] }
+        publish_at: { type: string, format: date-time }
+        audience:
+          type: object
+          properties:
+            plan_codes: { type: array, items: { type: string } }
+            business_categories: { type: array, items: { type: string } }
+            connected_only: { type: boolean }
+            beta_access: { type: boolean }
+            active_within_days: { type: integer, minimum: 0, maximum: 365 }
+            minimum_products: { type: integer }
+            minimum_team_members: { type: integer }
+            organization_ids: { type: array, items: { type: string, format: uuid } }
+    Recommendation:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        product_id: { type: string, format: uuid }
+        product_name: { type: string }
+        variant_id: { type: string, format: uuid }
+        state: { type: string, enum: [hold, raise, lower, investigate, pause] }
+        previous_price_kobo: { type: integer, format: int64 }
+        recommended_price_kobo: { type: integer, format: int64 }
+        minimum_profitable_price_kobo: { type: integer, format: int64 }
+        maximum_price_kobo: { type: integer, format: int64 }
+        lowest_confirmed_competitor_kobo: { type: integer, format: int64 }
+        change_bps: { type: integer, description: Absolute change in basis points }
+        confidence_bps: { type: integer, minimum: 0, maximum: 10000 }
+        urgency: { type: string }
+        margin_risk: { type: string, enum: [none, warning, critical] }
+        explanation: { type: string }
+        reasons:
+          type: array
+          items:
+            type: object
+            properties:
+              type: { type: string }
+              message: { type: string }
+              amount_kobo: { type: integer, format: int64 }
+              source: { type: string, enum: [cost, competitor, stock, rule, policy, lock] }
+        expires_at: { type: string, format: date-time }
+    PriceChangeRequest:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        recommendation_id: { type: string, format: uuid }
+        product_id: { type: string, format: uuid }
+        previous_price_kobo: { type: integer, format: int64 }
+        requested_price_kobo: { type: integer, format: int64 }
+        status:
+          type: string
+          enum: [draft, pending, approved, rejected, expired, published, failed, rolled_back]
+        scheduled_for: { type: string, format: date-time }
+        execution_status:
+          type: string
+          enum: [queued, running, succeeded, failed, conflict, cancelled, rolled_back]
+        verified_after_price_kobo: { type: integer, format: int64, description: Price read back from WooCommerce after publish }
+        last_error: { type: string }
+    KillSwitch:
+      type: object
+      properties:
+        scope: { type: string, enum: [platform, tenant] }
+        enabled: { type: boolean }
+        reason: { type: string }
+        updated_at: { type: string, format: date-time }
+    Competitor:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        source_type: { type: string, enum: [approved_web, data_provider] }
+        domain: { type: string }
+        location_market: { type: string }
+        status: { type: string, enum: [active, paused, blocked] }
+        monitoring_policy:
+          type: object
+          properties:
+            interval_minutes: { type: integer, minimum: 1 }
+            freshness_minutes: { type: integer, minimum: 1 }
+            backoff_minutes: { type: integer, minimum: 1 }
+    CompetitorProduct:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        competitor_id: { type: string, format: uuid }
+        url: { type: string, format: uri }
+        name: { type: string }
+        sku: { type: string }
+        match_state: { type: string, enum: [unmatched, suggested, needs_review, confirmed, rejected, stale, broken, paused] }
+        suggested_product_id: { type: string, format: uuid }
+        confirmed_product_id: { type: string, format: uuid }
+        match_confidence_bps: { type: integer, minimum: 0, maximum: 10000 }
+        last_observed_price_kobo: { type: integer, format: int64 }
+        last_observed_at: { type: string, format: date-time }
+    CompetitorObservation:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        source_url: { type: string, format: uri }
+        observed_price_kobo: { type: integer, format: int64 }
+        currency: { type: string }
+        availability: { type: string, enum: [instock, outofstock, unknown] }
+        extraction_confidence_bps: { type: integer }
+        raw_evidence_sha256: { type: string }
+        observed_at: { type: string, format: date-time }
+        fresh_until: { type: string, format: date-time }
+    Product:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        external_id: { type: string }
+        sku: { type: string }
+        name: { type: string }
+        status: { type: string, enum: [draft, private, published, archived, deleted] }
+        stock_status: { type: string }
+        stock_quantity: { type: integer, nullable: true }
+        price_kobo: { type: integer, format: int64 }
+        sale_price_kobo: { type: integer, format: int64, nullable: true }
+        platform_price_kobo: { type: integer, format: int64, nullable: true }
+        price_conflict: { type: boolean }
+        needs_review: { type: boolean }
+        review_reason: { type: string }
+        variant_count: { type: integer }
+        missing_sku: { type: boolean }
+        categories: { type: array, items: { type: string } }
+paths:
+  /auth/signup:
+    post:
+      security: []
+      summary: Create account and session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string, minLength: 8 }
+                first_name: { type: string }
+                last_name: { type: string }
+      responses:
+        '201': { description: Account created; session cookie set }
+        '409': { description: Email already exists, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+  /auth/signin:
+    post:
+      security: []
+      summary: Create session
+      responses:
+        '200': { description: Signed in; session cookie set }
+        '401': { description: Invalid credentials, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+  /auth/logout:
+    post:
+      security: []
+      summary: Clear browser session
+      responses: { '200': { description: Signed out } }
+  /orgs:
+    get:
+      summary: List active organizations for the current user
+      responses:
+        '200': { description: Organizations }
+    post:
+      summary: Create an organization and assign owner membership
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          schema: { type: string, maxLength: 100 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string }
+                business_category: { type: string }
+                currency: { type: string, minLength: 3, maxLength: 3 }
+                timezone: { type: string }
+      responses:
+        '201': { description: Organization created, content: { application/json: { schema: { $ref: '#/components/schemas/Organization' } } } }
+  /app/{slug}/integrations/woocommerce/connect:
+    post:
+      summary: Connect WooCommerce and queue the initial catalog sync
+      parameters:
+        - $ref: '#/components/parameters/Slug'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [store_name, store_url, consumer_key, consumer_secret]
+              properties:
+                store_name: { type: string }
+                store_url: { type: string, format: uri }
+                consumer_key: { type: string, writeOnly: true }
+                consumer_secret: { type: string, format: password, writeOnly: true }
+      responses:
+        '201': { description: Connected; credentials encrypted and initial sync queued }
+        '401': { description: WooCommerce rejected credentials, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '429': { description: Provider rate limit, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+  /app/{slug}/integrations/woocommerce/status:
+    get:
+      summary: Read connector and catalog health without secrets
+      parameters: [{ $ref: '#/components/parameters/Slug' }]
+      responses: { '200': { description: Connector health } }
+  /app/{slug}/integrations/woocommerce/test:
+    post:
+      summary: Verify current WooCommerce credentials
+      parameters: [{ $ref: '#/components/parameters/Slug' }]
+      responses: { '200': { description: Healthy }, '401': { description: Credentials rejected } }
+  /app/{slug}/integrations/woocommerce/disconnect:
+    post:
+      summary: Disable connector jobs and preserve imported history
+      parameters: [{ $ref: '#/components/parameters/Slug' }]
+      responses: { '200': { description: Disconnected } }
+  /app/{slug}/integrations/woocommerce/sync:
+    post:
+      summary: Queue reconciliation sync
+      parameters: [{ $ref: '#/components/parameters/Slug' }]
+      responses: { '202': { description: Sync queued }, '409': { description: Sync already in progress } }
+  /app/{slug}/integrations/woocommerce/sync-runs:
+    get:
+      summary: List sync history
+      parameters: [{ $ref: '#/components/parameters/Slug' }]
+      responses: { '200': { description: Sync runs } }
+  /app/{slug}/integrations/woocommerce/sync-runs/{id}:
+    get:
+      summary: Get sync run and failed/successful item report
+      parameters:
+        - $ref: '#/components/parameters/Slug'
+        - $ref: '#/components/parameters/RunId'
+      responses: { '200': { description: Sync run detail } }
+  /app/{slug}/integrations/woocommerce/sync-runs/{id}/report:
+    get:
+      summary: Download import report CSV
+      parameters:
+        - $ref: '#/components/parameters/Slug'
+        - $ref: '#/components/parameters/RunId'
+      responses: { '200': { description: CSV report, content: { text/csv: {} } } }
+  /app/{slug}/integrations/woocommerce/sync-runs/{id}/retry:
+    post:
+      summary: Retry a failed or partial sync
+      parameters:
+        - $ref: '#/components/parameters/Slug'
+        - $ref: '#/components/parameters/RunId'
+      responses: { '202': { description: Retry queued } }
+  /app/{slug}/products:
+    get:
+      summary: List tenant-scoped normalized products
+      parameters:
+        - $ref: '#/components/parameters/Slug'
+        - { in: query, name: q, schema: { type: string, maxLength: 100 } }
+        - { in: query, name: status, schema: { type: string, enum: [published, draft, private, archived, deleted] } }
+        - { in: query, name: after, schema: { type: string, format: uuid } }
+        - { in: query, name: limit, schema: { type: integer, minimum: 1, maximum: 100, default: 25 } }
+      responses: { '200': { description: Product page, content: { application/json: { schema: { type: object, properties: { products: { type: array, items: { $ref: '#/components/schemas/Product' } }, next_cursor: { type: string } } } } } } }
+  /app/{slug}/products/{id}:
+    get:
+      summary: Get one product and variants
+      parameters:
+        - $ref: '#/components/parameters/Slug'
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      responses: { '200': { description: Product detail } }
+  /app/{slug}/costs:
+    get:
+      summary: List product costs, margins, floors, and review status
+      parameters: [{ $ref: '#/components/parameters/Slug' }]
+      responses: { '200': { description: Cost overview } }
+  /app/{slug}/costs/import:
+    post:
+      summary: Import up to 5,000 cost rows from CSV
+      parameters: [{ $ref: '#/components/parameters/Slug' }]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties: { file: { type: string, format: binary } }
+      responses: { '200': { description: Import counts and row-level issues } }
+  /app/{slug}/products/{id}/cost:
+    get:
+      summary: Get the active cost for a product or variant
+      parameters:
+        - $ref: '#/components/parameters/Slug'
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+        - { in: query, name: variant_id, schema: { type: string, format: uuid } }
+      responses: { '200': { description: Active cost } }
+    put:
+      summary: Create a new effective cost version
+      parameters:
+        - $ref: '#/components/parameters/Slug'
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [cost]
+              properties:
+                variant_id: { type: string, format: uuid }
+                currency: { type: string, minLength: 3, maxLength: 3 }
+                effective_from: { type: string, format: date-time }
+                cost: { $ref: '#/components/schemas/CostComponents' }
+      responses: { '200': { description: Cost saved }, '422': { description: Invalid cost } }
+  /app/{slug}/products/{id}/cost-history:
+    get:
+      summary: List effective cost versions and superseded history
+      parameters:
+        - $ref: '#/components/parameters/Slug'
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+        - { in: query, name: variant_id, schema: { type: string, format: uuid } }
+      responses: { '200': { description: Cost version history } }
+  /app/{slug}/products/{id}/pricing:
+    get:
+      summary: Calculate current margin, safe floor, and guardrail status without changing prices
+      parameters:
+        - $ref: '#/components/parameters/Slug'
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+        - { in: query, name: variant_id, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: Deterministic calculation, content: { application/json: { schema: { $ref: '#/components/schemas/PricingResult' } } } }
+        '422': { description: Cost is required }
+  /app/{slug}/products/{id}/price-lock:
+    put:
+      summary: Set or remove a product automation lock
+      parameters:
+        - $ref: '#/components/parameters/Slug'
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      responses: { '200': { description: Lock updated } }
+  /app/{slug}/pricing-rules:
+    get:
+      summary: List pricing rules
+      parameters: [{ $ref: '#/components/parameters/Slug' }]
+      responses: { '200': { description: Pricing rules } }
+    post:
+      summary: Create an inactive or active pricing rule
+      parameters: [{ $ref: '#/components/parameters/Slug' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PricingRule' }
+      responses: { '201': { description: Rule created } }
+  /app/{slug}/pricing-rules/{id}:
+    patch:
+      summary: Update a pricing rule using optimistic version checking
+      parameters:
+        - $ref: '#/components/parameters/Slug'
+        - $ref: '#/components/parameters/RunId'
+      responses: { '200': { description: Rule updated } }
+    delete:
+      summary: Delete a pricing rule
+      parameters:
+        - $ref: '#/components/parameters/Slug'
+        - $ref: '#/components/parameters/RunId'
+      responses: { '200': { description: Rule deleted } }
+  /app/{slug}/pricing-rules/simulate:
+    post:
+      summary: Preview deterministic rule outcomes for 1-100 products
+      parameters: [{ $ref: '#/components/parameters/Slug' }]
+      responses: { '200': { description: Simulation results; no prices changed } }
+  /app/{slug}/price-policy:
+    put:
+      summary: Create or update an explicit product, variant, category, or store floor/ceiling
+      parameters: [{ $ref: '#/components/parameters/Slug' }]
+      responses: { '200': { description: Policy saved } }
+  /app/{slug}/cost-alerts:
+    get:
+      summary: List cost-impact alerts
+      parameters: [{ $ref: '#/components/parameters/Slug' }]
+      responses: { '200': { description: Margin-impact alerts } }
+  /app/{slug}/competitors:
+    get:
+      summary: List approved competitor sources
+      parameters: [{ $ref: '#/components/parameters/Slug' }]
+      responses: { '200': { description: Competitor sources } }
+    post:
+      summary: Add an administrator-approved competitor domain
+      parameters: [{ $ref: '#/components/parameters/Slug' }]
+      responses: { '201': { description: Competitor added }, '422': { description: Domain is not approved } }
+  /app/{slug}/competitor-products:
+    get:
+      summary: List tracked competitor products, matches, and health
+      parameters: [{ $ref: '#/components/parameters/Slug' }]
+      responses: { '200': { description: Competitor products, content: { application/json: { schema: { type: object, properties: { products: { type: array, items: { $ref: '#/components/schemas/CompetitorProduct' } } } } } } } }
+    post:
+      summary: Add an approved competitor product URL and queue observation
+      parameters: [{ $ref: '#/components/parameters/Slug' }]
+      responses: { '201': { description: Product queued }, '422': { description: URL is outside approved sources } }
+  /app/{slug}/competitor-products/{id}/refresh:
+    post:
+      summary: Queue a fresh source observation
+      parameters:
+        - $ref: '#/components/parameters/Slug'
+        - $ref: '#/components/parameters/RunId'
+      responses: { '202': { description: Observation queued }, '409': { description: Check already queued } }
+  /app/{slug}/competitor-products/{id}/review:
+    post:
+      summary: Confirm, reject, or request review of a suggested match
+      parameters:
+        - $ref: '#/components/parameters/Slug'
+        - $ref: '#/components/parameters/RunId'
+      responses: { '200': { description: Match review recorded } }
+  /app/{slug}/competitor-products/{id}/history:
+    get:
+      summary: List immutable competitor price and availability history
+      parameters:
+        - $ref: '#/components/parameters/Slug'
+        - $ref: '#/components/parameters/RunId'
+      responses: { '200': { description: Observation history, content: { application/json: { schema: { type: object, properties: { observations: { type: array, items: { $ref: '#/components/schemas/CompetitorObservation' } } } } } } } }
+  /app/{slug}/competitor-alerts:
+    get:
+      summary: List price, availability, stale-data, and broken-source alerts
+      parameters: [{ $ref: '#/components/parameters/Slug' }]
+      responses: { '200': { description: Competitor alerts } }
+  /app/{slug}/competitor-health:
+    get:
+      summary: List source health without storing or returning private data
+      parameters: [{ $ref: '#/components/parameters/Slug' }]
+      responses: { '200': { description: Source health } }
+  /app/{slug}/recommendations:
+    get:
+      summary: Recommendation inbox with urgency, margin risk, state, category, and product filters
+      parameters:
+        - $ref: '#/components/parameters/Slug'
+        - { name: state, in: query, schema: { type: string, enum: [hold, raise, lower, investigate, pause] } }
+        - { name: urgency, in: query, schema: { type: string, enum: [high, normal] } }
+        - { name: margin_risk, in: query, schema: { type: string } }
+        - { name: category_id, in: query, schema: { type: string, format: uuid } }
+        - { name: product_id, in: query, schema: { type: string, format: uuid } }
+        - { name: limit, in: query, schema: { type: integer, maximum: 200 } }
+      responses:
+        '200':
+          description: Recommendations with deterministic reasons
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  recommendations: { type: array, items: { $ref: '#/components/schemas/Recommendation' } }
+  /app/{slug}/recommendations/generate:
+    post:
+      summary: Recompute recommendations for the tenant
+      description: Recalculates from landed cost, pricing rules, and confirmed in-stock fresh competitor data.
+      parameters: [{ $ref: '#/components/parameters/Slug' }]
+      responses: { '200': { description: Generation count } }
+  /app/{slug}/recommendations/{id}/submit:
+    post:
+      summary: Submit a recommendation for approval
+      description: Rejects submissions below the safe floor, above the ceiling, or after expiry.
+      parameters:
+        - $ref: '#/components/parameters/Slug'
+        - $ref: '#/components/parameters/RunId'
+      responses:
+        '201': { description: Price change request created, content: { application/json: { schema: { $ref: '#/components/schemas/PriceChangeRequest' } } } }
+        '409': { description: Recommendation expired }
+        '422': { description: Not actionable or violates floor/ceiling }
+  /app/{slug}/price-changes:
+    get:
+      summary: List price change requests and their execution status
+      parameters:
+        - $ref: '#/components/parameters/Slug'
+        - { name: status, in: query, schema: { type: string } }
+      responses:
+        '200':
+          description: Price change requests
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  requests: { type: array, items: { $ref: '#/components/schemas/PriceChangeRequest' } }
+  /app/{slug}/price-changes/{id}/approve:
+    post:
+      summary: Approve or reject within the approver's role limit
+      parameters:
+        - $ref: '#/components/parameters/Slug'
+        - $ref: '#/components/parameters/RunId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [decision]
+              properties:
+                decision: { type: string, enum: [approved, rejected] }
+                note: { type: string }
+      responses:
+        '200': { description: Decision recorded }
+        '403': { description: Exceeds role approval limit }
+        '409': { description: Not awaiting approval or expired }
+  /app/{slug}/price-changes/{id}/publish:
+    post:
+      summary: Queue an approved price change for WooCommerce publishing
+      description: Creates one idempotent execution. The worker re-reads live state and refuses to overwrite manual changes.
+      parameters:
+        - $ref: '#/components/parameters/Slug'
+        - $ref: '#/components/parameters/RunId'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                scheduled_for: { type: string, format: date-time, description: Omit or null to publish immediately. }
+      responses:
+        '202': { description: Publish execution queued }
+        '409': { description: Kill switch active, expired, or an execution is already active }
+  /app/{slug}/price-changes/{id}/rollback:
+    post:
+      summary: Roll back a succeeded publish to the prior confirmed price
+      description: Refuses to overwrite a price that changed externally after publishing.
+      parameters:
+        - $ref: '#/components/parameters/Slug'
+        - $ref: '#/components/parameters/RunId'
+      responses:
+        '202': { description: Rollback queued }
+        '409': { description: Kill switch active, not published, or rollback already in progress }
+  /app/{slug}/pricing-kill-switch:
+    get:
+      summary: Effective publishing kill-switch state
+      parameters: [{ $ref: '#/components/parameters/Slug' }]
+      responses:
+        '200': { description: Kill switch, content: { application/json: { schema: { $ref: '#/components/schemas/KillSwitch' } } } }
+    put:
+      summary: Disable or re-enable publishing for this tenant
+      parameters: [{ $ref: '#/components/parameters/Slug' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [enabled, reason]
+              properties:
+                enabled: { type: boolean }
+                reason: { type: string, minLength: 3 }
+      responses: { '200': { description: Kill switch updated } }
+  /app/{slug}/approval-limits:
+    get:
+      summary: Per-role approval thresholds
+      parameters: [{ $ref: '#/components/parameters/Slug' }]
+      responses: { '200': { description: Approval limits } }
+  /app/{slug}/reports:
+    get:
+      summary: Run a tenant-scoped report
+      parameters:
+        - $ref: '#/components/parameters/Slug'
+        - name: kind
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [margin, below_floor, competitor_gap, price_change_history, publish_reliability, competitor_health, recommendation_outcomes, stock_opportunity]
+        - { name: limit, in: query, schema: { type: integer, maximum: 2000 } }
+      responses:
+        '200': { description: Report, content: { application/json: { schema: { $ref: '#/components/schemas/Report' } } } }
+        '403': { description: Report access is role-gated }
+  /app/{slug}/reports/kinds:
+    get:
+      summary: List supported report kinds
+      parameters: [{ $ref: '#/components/parameters/Slug' }]
+      responses: { '200': { description: Report kinds } }
+  /app/{slug}/reports/export.csv:
+    get:
+      summary: Export a report as CSV
+      description: Requires report.export. Cells are sanitized against spreadsheet formula injection.
+      parameters:
+        - $ref: '#/components/parameters/Slug'
+        - { name: kind, in: query, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: CSV export
+          content: { text/csv: { schema: { type: string } } }
+        '403': { description: Export is restricted to store owners and pricing managers }
+  /app/{slug}/notifications:
+    get:
+      summary: Notification centre for the caller
+      parameters:
+        - $ref: '#/components/parameters/Slug'
+        - { name: unread, in: query, schema: { type: boolean } }
+      responses:
+        '200':
+          description: Notifications with per-channel delivery status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  unread: { type: integer }
+                  notifications: { type: array, items: { $ref: '#/components/schemas/Notification' } }
+  /app/{slug}/notifications/{id}/read:
+    post:
+      summary: Mark a notification read
+      parameters:
+        - $ref: '#/components/parameters/Slug'
+        - $ref: '#/components/parameters/RunId'
+      responses: { '200': { description: Marked read } }
+  /app/{slug}/notification-preferences:
+    get:
+      summary: Per-alert-type preferences for the caller
+      parameters: [{ $ref: '#/components/parameters/Slug' }]
+      responses: { '200': { description: Preferences } }
+    put:
+      summary: Update a preference
+      description: Muting a critical alert requires an explicit override reason.
+      parameters: [{ $ref: '#/components/parameters/Slug' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/NotificationPreference' }
+      responses:
+        '200': { description: Preference saved }
+        '422': { description: Critical alert mute requires an explicit override }
+  /app/{slug}/notification-consents:
+    get:
+      summary: Channel consent for the caller
+      parameters: [{ $ref: '#/components/parameters/Slug' }]
+      responses: { '200': { description: Consents } }
+    put:
+      summary: Grant or revoke a channel
+      description: WhatsApp requires an E.164 destination; no message is sent without granted consent.
+      parameters: [{ $ref: '#/components/parameters/Slug' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [channel, status]
+              properties:
+                channel: { type: string, enum: [email, whatsapp] }
+                status: { type: string, enum: [granted, revoked] }
+                destination: { type: string }
+      responses: { '200': { description: Consent recorded } }
+  /app/{slug}/announcements:
+    get:
+      summary: Announcements targeted at this store
+      parameters: [{ $ref: '#/components/parameters/Slug' }]
+      responses: { '200': { description: Announcement inbox } }
+  /app/{slug}/announcements/{id}/read:
+    post:
+      summary: Mark an announcement read or acknowledge it
+      parameters:
+        - $ref: '#/components/parameters/Slug'
+        - $ref: '#/components/parameters/RunId'
+      responses: { '200': { description: Recorded } }
+  /app/{slug}/feedback:
+    get:
+      summary: List this store's private feedback tickets
+      parameters:
+        - $ref: '#/components/parameters/Slug'
+        - { name: status, in: query, schema: { type: string } }
+      responses: { '200': { description: Tickets } }
+    post:
+      summary: Submit private feedback
+      parameters: [{ $ref: '#/components/parameters/Slug' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [kind, subject, body]
+              properties:
+                kind: { type: string, enum: [bug, feature_request, improvement] }
+                subject: { type: string, maxLength: 200 }
+                body: { type: string, maxLength: 10000 }
+                file_ids: { type: array, items: { type: string, format: uuid }, maxItems: 10 }
+      responses: { '201': { description: Ticket created } }
+  /app/{slug}/feedback/{id}:
+    get:
+      summary: Read one ticket and its private thread
+      parameters:
+        - $ref: '#/components/parameters/Slug'
+        - $ref: '#/components/parameters/RunId'
+      responses: { '200': { description: Ticket }, '404': { description: Not found } }
+  /app/{slug}/feedback/{id}/replies:
+    post:
+      summary: Reply to a ticket
+      parameters:
+        - $ref: '#/components/parameters/Slug'
+        - $ref: '#/components/parameters/RunId'
+      responses: { '201': { description: Reply added } }
+  /community/rooms:
+    get:
+      summary: Rooms visible to the caller
+      responses: { '200': { description: Rooms with posting rights } }
+  /community/profile:
+    get:
+      summary: Caller's community profile
+      responses: { '200': { description: Profile } }
+    put:
+      summary: Update the caller's community profile
+      description: Profiles carry no organization, cost, or revenue data.
+      responses: { '200': { description: Profile saved } }
+  /community/rooms/{id}/posts:
+    get:
+      summary: List posts in a room
+      parameters: [{ $ref: '#/components/parameters/RunId' }]
+      responses: { '200': { description: Posts } }
+    post:
+      summary: Create a post
+      description: Content is screened; coordinated pricing, customer allocation, competitor confidentiality, and price fixing are blocked.
+      parameters: [{ $ref: '#/components/parameters/RunId' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [body]
+              properties:
+                body: { type: string, maxLength: 5000 }
+      responses:
+        '201': { description: Posted }
+        '422': { description: Blocked by the community safety policy }
+        '429': { description: Rate limited }
+  /community/posts/{id}/replies:
+    get:
+      summary: List replies to a post
+      parameters: [{ $ref: '#/components/parameters/RunId' }]
+      responses: { '200': { description: Replies } }
+    post:
+      summary: Reply to a post
+      parameters: [{ $ref: '#/components/parameters/RunId' }]
+      responses: { '201': { description: Replied }, '422': { description: Blocked by policy } }
+  /community/react:
+    post:
+      summary: React to a post or reply
+      responses: { '200': { description: Reacted } }
+  /community/report:
+    post:
+      summary: Report content for moderation
+      responses: { '201': { description: Reported } }
+  /admin/announcements:
+    get:
+      summary: List announcements
+      responses: { '200': { description: Announcements }, '403': { description: Platform admin required } }
+    post:
+      summary: Create or publish an announcement
+      description: Audience supports plan, activity, category, connection status, and beta access. Rich content is sanitized to an allowlist.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AnnouncementInput' }
+      responses: { '201': { description: Created }, '403': { description: Platform admin required } }
+  /admin/announcements/{id}:
+    patch:
+      summary: Update an announcement, creating a new version
+      parameters: [{ $ref: '#/components/parameters/RunId' }]
+      responses: { '200': { description: Updated }, '404': { description: Not found } }
+  /admin/announcements/{id}/archive:
+    post:
+      summary: Archive an announcement
+      parameters: [{ $ref: '#/components/parameters/RunId' }]
+      responses: { '200': { description: Archived } }
+  /admin/announcements/{id}/versions:
+    get:
+      summary: Announcement version history
+      parameters: [{ $ref: '#/components/parameters/RunId' }]
+      responses: { '200': { description: Versions } }
+  /admin/feedback/{id}/transition:
+    post:
+      summary: Move a ticket through the governed status flow
+      parameters: [{ $ref: '#/components/parameters/RunId' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { type: string, enum: [submitted, triaged, needs_information, planned, in_progress, released, declined, closed] }
+                note: { type: string }
+      responses:
+        '200': { description: Transitioned }
+        '409': { description: Transition is not allowed from the current status }
+  /admin/feedback/{id}/replies:
+    post:
+      summary: Support reply or internal note
+      description: Internal notes are never returned to the store owner.
+      parameters: [{ $ref: '#/components/parameters/RunId' }]
+      responses: { '201': { description: Reply added } }
+  /admin/community/moderation:
+    get:
+      summary: Moderation queue
+      parameters: [{ $ref: '#/components/parameters/RunId' }, { name: status, in: query, schema: { type: string } }]
+      responses: { '200': { description: Queue with redacted excerpts } }
+  /admin/community/reports/{id}/moderate:
+    post:
+      summary: Hide, restore, or escalate reported content
+      parameters: [{ $ref: '#/components/parameters/RunId' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action]
+              properties:
+                action: { type: string, enum: [hide, restore, escalate] }
+                resolution: { type: string }
+      responses: { '200': { description: Action applied } }
+  /admin/community/mute:
+    post:
+      summary: Mute a user in a room
+      responses: { '200': { description: Muted } }
+  /admin/notifications/failed:
+    get:
+      summary: Notification deliveries that exhausted retries
+      responses: { '200': { description: Failed deliveries with errors } }
+  /admin/integrations/pricing-kill-switch:
+    get:
+      summary: Platform-wide publishing kill switch
+      responses: { '200': { description: Kill switch }, '403': { description: Platform admin required } }
+    put:
+      summary: Disable all automatic publishing platform-wide
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [enabled, reason]
+              properties:
+                enabled: { type: boolean }
+                reason: { type: string, minLength: 3 }
+      responses: { '200': { description: Kill switch updated }, '403': { description: Platform admin required } }
+  /admin/integrations/competitors:
+    get:
+      summary: Platform-wide competitor source health
+      responses: { '200': { description: Source diagnostics }, '403': { description: Platform admin required } }
+  /admin/integrations/woocommerce:
+    get:
+      summary: Platform-wide connector diagnostics without credentials
+      responses: { '200': { description: Connector diagnostics }, '403': { description: Platform admin required } }

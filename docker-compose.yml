@@ -1,0 +1,98 @@
+services:
+  api:
+    build: { context: ., dockerfile: Dockerfile }
+    environment:
+      APP_ENV: development
+      HTTP_PORT: "8080"
+      MIGRATION_DATABASE_URL: "postgres://${POSTGRES_USER:-pricing}:${POSTGRES_PASSWORD:-pricing_dev_only}@postgres:5432/${POSTGRES_DB:-pricing}?sslmode=disable"
+      DATABASE_URL: "postgres://pricing_app:pricing_app_dev_only@postgres:5432/${POSTGRES_DB:-pricing}?sslmode=disable"
+      WORKER_DATABASE_URL: "postgres://pricing_worker:pricing_worker_dev_only@postgres:5432/${POSTGRES_DB:-pricing}?sslmode=disable"
+      ADMIN_DATABASE_URL: "postgres://pricing_worker:pricing_worker_dev_only@postgres:5432/${POSTGRES_DB:-pricing}?sslmode=disable"
+      CORS_ALLOWED_ORIGIN: "http://localhost:3000,http://localhost:3001,http://localhost:3002"
+      JWT_SECRET: "${JWT_SECRET:-change-me-in-production-must-be-32-chars!!}"
+      CREDENTIAL_ENCRYPTION_KEY: "${CREDENTIAL_ENCRYPTION_KEY:-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=}"
+      WOOCOMMERCE_ALLOW_INSECURE: "true"
+      WOOCOMMERCE_ALLOW_PRIVATE_NETWORKS: "true"
+      WOOCOMMERCE_WEBHOOK_BASE_URL: "${WOOCOMMERCE_WEBHOOK_BASE_URL:-http://localhost:8080}"
+      RECONCILIATION_INTERVAL_MINUTES: "${RECONCILIATION_INTERVAL_MINUTES:-15}"
+      COMPETITOR_ALLOWED_DOMAINS: "${COMPETITOR_ALLOWED_DOMAINS:-}"
+      COMPETITOR_CHECK_INTERVAL_MINUTES: "${COMPETITOR_CHECK_INTERVAL_MINUTES:-360}"
+      COMPETITOR_FRESHNESS_MINUTES: "${COMPETITOR_FRESHNESS_MINUTES:-720}"
+      RECOMMENDATION_INTERVAL_MINUTES: "${RECOMMENDATION_INTERVAL_MINUTES:-15}"
+      RECOMMENDATION_TTL_MINUTES: "${RECOMMENDATION_TTL_MINUTES:-30}"
+      COMPETITOR_ALLOW_PRIVATE_NETWORKS: "false"
+    ports: ["8080:8080"]
+    depends_on: { postgres: { condition: service_healthy } }
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "/api", "-healthcheck"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+  web-public:
+    build:
+      context: ./apps/web-public
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: "http://localhost:8080"
+        NEXT_PUBLIC_DASHBOARD_URL: "http://localhost:3001"
+    ports: ["3000:3000"]
+    depends_on: { api: { condition: service_healthy } }
+    restart: unless-stopped
+  admin-web:
+    build:
+      context: ./apps/admin-web
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: "http://localhost:8080"
+    ports: ["3002:3002"]
+    depends_on: { api: { condition: service_healthy } }
+    restart: unless-stopped
+  web-app:
+    build:
+      context: ./apps/web-app
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: "http://localhost:8080"
+    environment:
+      NEXT_PUBLIC_API_URL: "http://localhost:8080"
+    ports: ["3001:3001"]
+    depends_on: { api: { condition: service_healthy } }
+    restart: unless-stopped
+  worker:
+    build: { context: ., dockerfile: Dockerfile }
+    entrypoint: ["/worker"]
+    environment:
+      APP_ENV: development
+      DATABASE_URL: "postgres://pricing_app:pricing_app_dev_only@postgres:5432/${POSTGRES_DB:-pricing}?sslmode=disable"
+      WORKER_DATABASE_URL: "postgres://pricing_worker:pricing_worker_dev_only@postgres:5432/${POSTGRES_DB:-pricing}?sslmode=disable"
+      CREDENTIAL_ENCRYPTION_KEY: "${CREDENTIAL_ENCRYPTION_KEY:-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=}"
+      RECONCILIATION_INTERVAL_MINUTES: "${RECONCILIATION_INTERVAL_MINUTES:-15}"
+      COMPETITOR_ALLOWED_DOMAINS: "${COMPETITOR_ALLOWED_DOMAINS:-}"
+      COMPETITOR_CHECK_INTERVAL_MINUTES: "${COMPETITOR_CHECK_INTERVAL_MINUTES:-360}"
+      COMPETITOR_FRESHNESS_MINUTES: "${COMPETITOR_FRESHNESS_MINUTES:-720}"
+      RECOMMENDATION_INTERVAL_MINUTES: "${RECOMMENDATION_INTERVAL_MINUTES:-15}"
+      RECOMMENDATION_TTL_MINUTES: "${RECOMMENDATION_TTL_MINUTES:-30}"
+      COMPETITOR_ALLOW_PRIVATE_NETWORKS: "false"
+    depends_on: { api: { condition: service_healthy } }
+    restart: unless-stopped
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: "${POSTGRES_USER:-pricing}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-pricing_dev_only}"
+      POSTGRES_DB: "${POSTGRES_DB:-pricing}"
+    ports: ["5432:5432"]
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./scripts/postgres-init.sql:/docker-entrypoint-initdb.d/01-roles.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-pricing} -d $${POSTGRES_DB:-pricing}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+volumes:
+  postgres-data:

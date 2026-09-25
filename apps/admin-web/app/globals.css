@@ -1,0 +1,10 @@
+@import "./tokens.css";
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg-canvas); color: var(--text-primary); }
+.admin-header { min-height: 64px; display: flex; align-items: center; gap: 24px; padding: 12px 24px; background: white; border-bottom: 1px solid var(--border-default); }
+.admin-header a { color: var(--text-secondary); text-decoration: none; }
+.admin-main { max-width: 1280px; margin: 0 auto; padding: 24px; }
+.panel { background: white; border: 1px solid var(--border-default); border-radius: 12px; padding: 20px; }
+table { width: 100%; border-collapse: collapse; } th, td { padding: 12px; text-align: left; border-bottom: 1px solid var(--border-default); white-space: nowrap; } th { color: var(--text-muted); font-size: 12px; }
+.badge { padding: 3px 8px; border-radius: 999px; background: var(--bg-subtle); } .error { background: var(--danger-soft); color: var(--danger); } .success { background: var(--success-soft); color: var(--success); }
+.alert { padding: 12px; border-radius: 8px; background: var(--danger-soft); color: var(--danger); }

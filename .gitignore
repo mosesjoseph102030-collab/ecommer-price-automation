@@ -1,0 +1,30 @@
+.env
+.env.*
+!.env.example
+*.log
+backoff
+coverage/
+dist/
+out/
+.next/
+node_modules/
+apps/*/node_modules/
+apps/*/.next/
+.DS_Store
+Thumbs.db
+*.pem
+*.key
+*.tsbuildinfo
+
+# Compiled Go binaries. `go build ./...` in the repo root drops api.exe and
+# worker.exe; a committed binary is both large and unreviewable.
+/api
+/api.exe
+/worker
+/worker.exe
+*.exe
+
+# Redirected process output, the usual result of launching the API or a
+# frontend with Start-Process -RedirectStandardOutput.
+/*.out
+/*.err

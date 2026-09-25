@@ -1,0 +1,28 @@
+-- Phase 7 follow-up: drop an inverted CHECK constraint on ai_feature_flags.
+--
+-- Migration 007 declared:
+--
+--   CHECK ((organization_id IS NULL) <> (feature = 'community_summary'
+--                                         AND organization_id IS NOT NULL))
+--
+-- The intended rule was "community_summary is platform-scoped, everything else
+-- may be tenant-scoped". The expression is actually inverted. Its truth table:
+--
+--   org=NULL (platform), any feature        -> passes
+--   org=SET  (tenant),  community_summary   -> passes
+--   org=SET  (tenant),  any other feature   -> REJECTED
+--
+-- So the constraint permitted exactly the rows nobody needs and rejected the
+-- only rows a store owner would ever write. Enabling a tenant feature failed
+-- with "violates check constraint ai_feature_flags_check" (23514).
+--
+-- The constraint is dropped rather than corrected because it encodes no
+-- invariant worth enforcing. The feature allowlist is already enforced in Go by
+-- ai.ValidFeature, and whether a feature is enabled platform-wide or per tenant
+-- is a product decision, not a schema rule. Keeping a wrong constraint is worse
+-- than having none: it blocks the legitimate write path while appearing to add
+-- safety.
+--
+-- 007 is already applied and is NOT edited, so there is no drift.
+
+ALTER TABLE ai_feature_flags DROP CONSTRAINT IF EXISTS ai_feature_flags_check;

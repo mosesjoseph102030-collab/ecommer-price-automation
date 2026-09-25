@@ -1,0 +1,39 @@
+# Normalise line endings in the repository, then restore the platform default
+# in the working copy.
+#
+# Without this, a Windows checkout writes CRLF into files that must stay LF on
+# Linux. A CRLF line ending in a shell script fails with "\r: command not found",
+# and in a CI workflow it fails in a way that looks like a YAML syntax error.
+# GitHub Actions runs on Linux, so the committed bytes are what matter.
+
+* text=auto
+
+*.go      text eol=lf
+*.sql     text eol=lf
+*.ts      text eol=lf
+*.tsx     text eol=lf
+*.js      text eol=lf
+*.json    text eol=lf
+*.md      text eol=lf
+*.yml     text eol=lf
+*.yaml    text eol=lf
+*.css     text eol=lf
+*.mjs     text eol=lf
+*.cjs     text eol=lf
+
+*.sh      text eol=lf
+Dockerfile text eol=lf
+.gitattributes text eol=lf
+.gitignore    text eol=lf
+
+# Binary assets must never be line-ending translated.
+*.png     binary
+*.jpg     binary
+*.jpeg    binary
+*.gif     binary
+*.ico     binary
+*.woff    binary
+*.woff2   binary
+*.node    binary
+*.exe     binary
+*.dll     binary
