@@ -282,6 +282,10 @@ export const api = {
     request<{ user_id: string }>("/auth/signin", { method: "POST", body: JSON.stringify(body) }),
   logout: () => request<{ ok: boolean }>("/auth/logout", { method: "POST" }),
   organizations: () => request<{ organizations: Array<{ id: string; name: string; slug: string }> }>("/orgs"),
+  // me is the session probe the dashboard entry point uses. A 401 here is the
+  // expected answer for an anonymous visitor, so callers must handle it rather
+  // than treating it as an error worth reporting.
+  me: () => request<{ user_id: string; email: string; first_name: string; last_name: string }>("/auth/me"),
   createOrganization: (body: { name: string; business_category?: string; currency?: string; timezone?: string }) =>
     request<{ id: string; name: string; slug: string }>("/orgs", { method: "POST", body: JSON.stringify(body) }),
   wooStatus: (slug: string) => request<{ connected: boolean; health?: Health }>(`/app/${encodeURIComponent(slug)}/integrations/woocommerce/status`),

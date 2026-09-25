@@ -22,5 +22,32 @@
 body { background: var(--bg-canvas); color: var(--text-primary); font-family: Inter, Manrope, system-ui, sans-serif; }
 .button-primary { color: var(--on-brand); background: var(--brand-primary); border-radius: var(--radius-md); padding: 12px 20px; min-height: 44px; }
 .card { background: var(--bg-surface); border: 1px solid var(--border-default); border-radius: var(--radius-md); box-shadow: var(--shadow-card); }
-.hero { max-height: 720px; background: linear-gradient(90deg, rgba(8,30,34,.88), rgba(8,30,34,.30)), url("/images/hero-store-owner.webp") center/cover no-repeat; background-color: #0b1e22; }
-.hero + * { background: var(--bg-canvas); }
+
+/* Hero.
+ *
+ * file.md requires the photograph to appear in the hero only, to stop cleanly at
+ * the hero's lower boundary, and to degrade to a plain colour if it fails to
+ * load. The three background layers below are that contract:
+ *   1. the accessible dark overlay, at the exact stops the spec gives,
+ *   2. the photograph,
+ *   3. a solid colour, which is what remains if the image 404s.
+ * Nothing below the hero inherits any of this, because the rule is scoped to
+ * .hero rather than to a wrapping element.
+ */
+.hero {
+  position: relative;
+  min-height: 620px;
+  max-height: 760px;
+  color: #fff;
+  background-color: #0b1e22;
+  background-image:
+    linear-gradient(90deg, rgba(8, 30, 34, 0.88) 0%, rgba(8, 30, 34, 0.70) 54%, rgba(8, 30, 34, 0.30) 100%),
+    url("/images/hero-store-owner.jpg");
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
+}
+@media (max-width: 760px) {
+  .hero { min-height: 540px; max-height: 680px; }
+}
+
